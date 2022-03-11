@@ -1,244 +1,278 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::fmt::Write;
 
-const NUMBER: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-
-fn main() {
-    parse(r#"{"web-app": {
-  "servlet": [
-    {
-      "servlet-name": "cofaxCDS",
-      "servlet-class": "org.cofax.cds.CDSServlet",
-      "init-param": {
-        "configGlossary:installationAt": "Philadelphia, PA",
-        "configGlossary:adminEmail": "ksm@pobox.com",
-        "configGlossary:poweredBy": "Cofax",
-        "configGlossary:poweredByIcon": "/images/cofax.gif",
-        "configGlossary:staticPath": "/content/static",
-        "templateProcessorClass": "org.cofax.WysiwygTemplate",
-        "templateLoaderClass": "org.cofax.FilesTemplateLoader",
-        "templatePath": "templates",
-        "templateOverridePath": "",
-        "defaultListTemplate": "listTemplate.htm",
-        "defaultFileTemplate": "articleTemplate.htm",
-        "useJSP": false,
-        "jspListTemplate": "listTemplate.jsp",
-        "jspFileTemplate": "articleTemplate.jsp",
-        "cachePackageTagsTrack": 200,
-        "cachePackageTagsStore": 200,
-        "cachePackageTagsRefresh": 60,
-        "cacheTemplatesTrack": 100,
-        "cacheTemplatesStore": 50,
-        "cacheTemplatesRefresh": 15,
-        "cachePagesTrack": 200,
-        "cachePagesStore": 100,
-        "cachePagesRefresh": 10,
-        "cachePagesDirtyRead": 10,
-        "searchEngineListTemplate": "forSearchEnginesList.htm",
-        "searchEngineFileTemplate": "forSearchEngines.htm",
-        "searchEngineRobotsDb": "WEB-INF/robots.db",
-        "useDataStore": true,
-        "dataStoreClass": "org.cofax.SqlDataStore",
-        "redirectionClass": "org.cofax.SqlRedirection",
-        "dataStoreName": "cofax",
-        "dataStoreDriver": "com.microsoft.jdbc.sqlserver.SQLServerDriver",
-        "dataStoreUrl": "jdbc:microsoft:sqlserver://LOCALHOST:1433;DatabaseName=goon",
-        "dataStoreUser": "sa",
-        "dataStorePassword": "dataStoreTestQuery",
-        "dataStoreTestQuery": "SET NOCOUNT ON;select test='test';",
-        "dataStoreLogFile": "/usr/local/tomcat/logs/datastore.log",
-        "dataStoreInitConns": 10,
-        "dataStoreMaxConns": 100,
-        "dataStoreConnUsageLimit": 100,
-        "dataStoreLogLevel": "debug",
-        "maxUrlLength": 500}},
-    {
-      "servlet-name": "cofaxEmail",
-      "servlet-class": "org.cofax.cds.EmailServlet",
-      "init-param": {
-      "mailHost": "mail1",
-      "mailHostOverride": "mail2"}},
-    {
-      "servlet-name": "cofaxAdmin",
-      "servlet-class": "org.cofax.cds.AdminServlet"},
-
-    {
-      "servlet-name": "fileServlet",
-      "servlet-class": "org.cofax.cds.FileServlet"},
-    {
-      "servlet-name": "cofaxTools",
-      "servlet-class": "org.cofax.cms.CofaxToolsServlet",
-      "init-param": {
-        "templatePath": "toolstemplates/",
-        "log": 1,
-        "logLocation": "/usr/local/tomcat/logs/CofaxTools.log",
-        "logMaxSize": "",
-        "dataLog": 1,
-        "dataLogLocation": "/usr/local/tomcat/logs/dataLog.log",
-        "dataLogMaxSize": "",
-        "removePageCache": "/content/admin/remove?cache=pages&id=",
-        "removeTemplateCache": "/content/admin/remove?cache=templates&id=",
-        "fileTransferFolder": "/usr/local/tomcat/webapps/content/fileTransferFolder",
-        "lookInContext": 1,
-        "adminGroupID": 4,
-        "betaServer": true}}],
-  "servlet-mapping": {
-    "cofaxCDS": "/",
-    "cofaxEmail": "/cofaxutil/aemail/*",
-    "cofaxAdmin": "/admin/*",
-    "fileServlet": "/static/*",
-    "cofaxTools": "/tools/*"},
-
-  "taglib": {
-    "taglib-uri": "cofax.tld",
-    "taglib-location": "/WEB-INF/tlds/cofax.tld"}}}"#.to_string()).unwrap();
-}
-#[derive(Debug)]
-enum JSON {
-    Object(HashMap<String, JSON>),
-    Boolean(bool),
-    Text(String),
-    Number(u64),
-    Array(Vec<JSON>),
-    Null
-}
-
 #[derive(Debug, Clone)]
-enum Parser {
-    keyopen,
-    keyvalue,
-    keydelimiter,
+pub enum Parser {
+    Keyopen,
+    Keyvalue,
+    Keydelimiter,
 
-    valuetype,
-        stringopen,
-        stringvalue,
-        keyword,
-        number,
-    valueEnd,
+    Valuetype,
+    Stringopen,
+    Stringvalue,
+    Keyword,
+    Number,
+    ValueEnd,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Layer {
-    Object(String),
+pub enum Layer {
+    Object,
     Array(u32),
     Key(String)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum JSON {
+    Object(HashMap<String, JSON>),
+    Array(Vec<JSON>),
+    Value(String)
+}
+
+impl JSON {
+    pub fn insert(self: &mut Self, layers: &Vec<Layer>, value: JSON) {
+        let mut last: &mut JSON= self;
+
+        for (i, layer) in layers.iter().enumerate() {
+            if i != layers.len()-1 {
+                match layer {
+                    Layer::Key(key) => {
+                        match last {
+                            JSON::Object(object) => {
+                                last = object.get_mut(key).unwrap()
+                            },
+                            _ => panic!("BRUH")
+                        }
+                    },
+                    Layer:: Array(index) => {
+                        match last {
+                            JSON::Array(array) => {
+                                last = array.get_mut(*index as usize).unwrap().borrow_mut()
+                            },
+                            _ => panic!("BRUH")
+                        }
+                    },
+                    _ => {}
+                }
+            }
+            else {
+                match layer {
+                    Layer::Key(key) => {
+                        match last {
+                            JSON::Object(object) => {
+                                object.insert(key.clone(), value.clone());
+                            },
+                            _ => {
+                                println!("{:?}", self);
+                                panic!("BRUH")
+                            }
+                        }
+                    },
+                    Layer::Array(_) => {
+                        match last {
+                            JSON::Array(array) => {
+                                array.push(value.clone())
+                            },
+                            _ => panic!("BRUH")
+                        }
+                    },
+                    _ => panic!("BRUH")
+                }
+            }
+        }
+    }
+    pub fn obj() -> Self {
+        Self::Object(HashMap::new())
+    }
+    pub fn ara() -> Self {
+        Self::Array(Vec::new())
+    }
+}
+
+const NUMBER: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+fn main() {
+    println!("{:?}", parse(r#"{
+    "glossary": {
+        "title": "example glossary",
+		"GlossDiv": {
+            "title": "S",
+			"GlossList": {
+                "GlossEntry": {
+                    "ID": "SGML",
+					"SortAs": "SGML",
+					"GlossTerm": "Standard Generalized Markup Language",
+					"Acronym": "SGML",
+					"Abbrev": "ISO 8879:1986",
+					"GlossDef": {
+                        "para": "A meta-markup language, used to create markup languages such as DocBook.",
+						"GlossSeeAlso": ["GML", "XML"]
+                    },
+					"GlossSee": "markup"
+                }
+            }
+        }
+    }
+}
+"#.to_string()).unwrap());
+}
+
 fn parse(s: String) -> Result<JSON, String> {
-    let mut parser = Parser::valuetype;
+    let mut parser = Parser::Valuetype;
     let mut indentation = String::new();
     let mut buffer = String::new();
     let mut layers: Vec<Layer> = Vec::new();
-    layers.push(Layer::Key(String::new()));
+
+    let mut js: Option<JSON> = None;
 
     for (i, c) in s.chars().enumerate() {
         // println!("{:?} {} {}", parser, c, i);
-        // println!("{:?}", layers);
+        // println!("first: {:?}", layers);
         match &parser {
-            Parser::keyopen => {
+            Parser::Keyopen => {
                 if c.is_whitespace() { }
                 else if c == '"' {
-                    parser = Parser::keyvalue
+                    parser = Parser::Keyvalue
                 }
                 else {
-                    return Err(format!("unexpected token {} {}", c, i))
+                    return Err(format!("unexpected token {} {} | expected \" Keyopen ", c, i))
                 }
             },
-            Parser::keyvalue => {
+            Parser::Keyvalue => {
                 if c == '"' {
                     layers.push(Layer::Key(buffer.clone()));
                     buffer.clear();
-                    parser = Parser::keydelimiter
+                    parser = Parser::Keydelimiter
                 }
                 else {
-                    buffer.write_char(c);
+                    buffer.write_char(c).unwrap();
                 }
             },
-            Parser::keydelimiter => {
+            Parser::Keydelimiter => {
                 if c.is_whitespace() { }
                 else if c == ':' {
-                    parser = Parser::valuetype
+                    parser = Parser::Valuetype
                 }
                 else {
-                    return Err(format!("unexpected token {} {}", c, i))
+                    return Err(format!("unexpected token {} {}| expected \":\" key delimiter", c, i))
                 }
             }
-            Parser::valuetype => {
+            Parser::Valuetype => {
                 if c.is_whitespace() { continue }
                 parser = match c {
-                    '"' => Parser::stringvalue,
+                    '"' => Parser::Stringvalue,
                     '{' => {
-                        print!("{indentation}");
-                        println!("{:?}: {}", layers.last().unwrap(), buffer);
 
-                        layers.push(Layer::Object(String::new()));
+                        print!("{indentation}");
+                        println!("{:?}: {}", layers.last().unwrap_or(&Layer::Key("root".to_string())), buffer);
+
+                        match &mut js {
+                            Some(v) => {
+                                v.insert(&layers.clone(), JSON::obj())
+                            }
+                            None => {
+                                js = Some(JSON::obj())
+                            }
+                        }
+
+                        layers.push(Layer::Object);
                         indentation += "  ";
-                        Parser::keyopen
+                        Parser::Keyopen
                     },
                     '[' => {
                         print!("{indentation}");
-                        println!("{:?}: {}", layers.last().unwrap(), buffer);
+                        println!("{:?}: {}", layers.last().unwrap_or(&Layer::Key("root".to_string())), buffer);
                         indentation += "  ";
 
+                        match &mut js {
+                            Some(v) => {
+                                v.insert(&layers.clone(), JSON::ara())
+                            }
+                            None => {
+                                js = Some(JSON::obj())
+                            }
+                        }
+
                         layers.push(Layer::Array(0));
-                        Parser::valuetype
+                        Parser::Valuetype
                     },
                     _ => {
                         if NUMBER.contains(&c) {
-                            buffer.write_char(c);
-                            Parser::number
+                            buffer.write_char(c).unwrap();
+                            Parser::Number
                         }
                         else {
-                            buffer.write_char(c);
-                            Parser::keyword
+                            buffer.write_char(c).unwrap();
+                            Parser::Keyword
                         }
                     }
                 }
             },
-            Parser::stringopen => {
+            Parser::Stringopen => {
                 if c.is_whitespace() { }
                 else if c == '"' {
-                parser = Parser::stringvalue
+                parser = Parser::Stringvalue
                 }
                 else {
-                    return Err(format!("unexpected token {} {}", c, i))
+                    return Err(format!("unexpected token {} {}| expected \" string opening", c, i))
                 }
             },
-            Parser::stringvalue => {
+            Parser::Stringvalue => {
                 if c == '"' {
-                    parser = Parser::valueEnd;
+                    parser = Parser::ValueEnd;
                     print!("{indentation}");
-                    println!("{:?}: {}", layers.last().unwrap(), buffer);
-                    layers.remove(layers.len()-1);
+                    println!("{:?}: {}", layers.last().unwrap_or(&Layer::Key("root".to_string())), buffer);
+
+                    match &mut js {
+                        Some(v) => {
+                            v.insert(&layers.clone(), JSON::Value(buffer.clone()))
+                        }
+                        None => {
+                            js = Some(JSON::Value(buffer.clone()))
+                        }
+                    }
+
+                    // if layers.len() > 1 {
+                    //     layers.remove(layers.len()-1);
+                    // }w
+                    match layers.last().unwrap() {
+                        Layer::Key(_) => {
+                            layers.remove(layers.len()-1);
+                        }
+                        _ => {}
+                    }
                     buffer.clear();
                 }
                 else {
-                    buffer.write_char(c);
+                    buffer.write_char(c).unwrap();
                 }
             },
-            Parser::valueEnd => {
+            Parser::ValueEnd => {
                 if c.is_whitespace() { }
                 else if c == ',' {
                     let len = layers.len()-1;
                     parser = match layers.get_mut(len).unwrap() {
-                        Layer::Object(_) => {
-                            Parser::keyopen
+                        Layer::Object => {
+                            Parser::Keyopen
                         }
                         Layer::Array(v) => {
                             *v += 1;
-                            Parser::valuetype
+                            Parser::Valuetype
                         },
-                        _ =>  panic!()
+                        _ =>  panic!("{:?}", layers)
                     };
                 }
                 else if c == '}' {
-                    match layers[layers.len()-2] {
-                        Layer::Key(_) => {
-                            layers.remove(layers.len()-1);
-                            layers.remove(layers.len()-1);
-                        }
-                        _ => {
-                            layers.remove(layers.len()-1);
+                    if layers.len() > 2 {
+                        match layers[layers.len()-2] {
+                            Layer::Key(_) => {
+                                layers.remove(layers.len()-1);
+                                layers.remove(layers.len()-1);
+                            }
+                            _ => {
+                                layers.remove(layers.len()-1);
+                            }
                         }
                     }
                     if indentation.len() >= 2 {
@@ -246,13 +280,15 @@ fn parse(s: String) -> Result<JSON, String> {
                     }
                 }
                 else if c == ']' {
-                    match layers[layers.len()-2] {
-                        Layer::Key(_) => {
-                            layers.remove(layers.len()-1);
-                            layers.remove(layers.len()-1);
-                        }
-                        _ => {
-                            layers.remove(layers.len()-1);
+                    if layers.len() > 2 {
+                        match layers[layers.len()-2] {
+                            Layer::Key(_) => {
+                                layers.remove(layers.len()-1);
+                                layers.remove(layers.len()-1);
+                            }
+                            _ => {
+                                layers.remove(layers.len()-1);
+                            }
                         }
                     }
                     if indentation.len() >= 2 {
@@ -260,40 +296,70 @@ fn parse(s: String) -> Result<JSON, String> {
                     }
                 }
                 else {
-                    return Err(format!("unexpected token {} {}", c, i))
+                    return Err(format!("unexpected token {} {} | expected }} or ] or \",\"", c, i))
                 }
             },
-            Parser::number => {
+            Parser::Number => {
                 if NUMBER.contains(&c) {
-                    buffer.write_char(c);
+                    buffer.write_char(c).unwrap();
                 }
                 else {
+
                     print!("{indentation}");
-                    println!("{:?}: {}", layers.last().unwrap(), buffer);
-                    layers.remove(layers.len()-1);
+
+                    match &mut js {
+                        Some(v) => {
+                            v.insert(&layers.clone(), JSON::Value(buffer.clone()))
+                        }
+                        None => {
+                            js = Some(JSON::Value(buffer.clone()))
+                        }
+                    }
+
+                    match layers.last().unwrap() {
+                        Layer::Key(_) => {
+                            layers.remove(layers.len()-1);
+                        }
+                        _ => {}
+                    }
+
+                    println!("{:?}: {}", layers.last().unwrap_or(&Layer::Key("root".to_string())), buffer);
 
                     buffer.clear();
 
-                    parser = Parser::valueEnd;
+                    parser = Parser::ValueEnd;
                     if c == ',' {
-                        parser = match layers.last().unwrap() {
-                            Layer::Object(_) => {
-                                Parser::keyopen
+                        match layers.last().unwrap() {
+                            Layer::Key(_) => {
+                                layers.remove(layers.len()-1);
                             }
-                            Layer::Array(_) => {
-                                Parser::valuetype
+                            _ => {}
+                        }
+
+                        let len = layers.len()-1;
+                        parser = match layers.get_mut(len).unwrap() {
+                            Layer::Object => {
+                                Parser::Keyopen
+                            }
+                            Layer::Array(v) => {
+                                *v += 1;
+                                Parser::Valuetype
                             },
-                            _ => panic!()
+                            _ => panic!("{:?}", layers)
                         }
                     }
                     else if c == '}' {
-                        match layers[layers.len()-2] {
-                            Layer::Key(_) => {
-                                layers.remove(layers.len()-1);
-                                layers.remove(layers.len()-1);
-                            }
-                            _ => {
-                                layers.remove(layers.len()-1);
+                        if layers.len() > 2 {
+                            match layers[layers.len()-2] {
+                                Layer::Key(_) => {
+                                    println!("Aids");
+                                    layers.remove(layers.len()-1);
+                                    layers.remove(layers.len()-1);
+                                }
+                                _ => {
+                                    println!("baids");
+                                    layers.remove(layers.len()-1);
+                                }
                             }
                         }
                         if indentation.len() >= 2 {
@@ -301,13 +367,15 @@ fn parse(s: String) -> Result<JSON, String> {
                         }
                     }
                     else if c == ']' {
-                        match layers[layers.len()-2] {
-                            Layer::Key(_) => {
-                                layers.remove(layers.len()-1);
-                                layers.remove(layers.len()-1);
-                            }
-                            _ => {
-                                layers.remove(layers.len()-1);
+                        if layers.len() > 2 {
+                            match layers[layers.len()-2] {
+                                Layer::Key(_) => {
+                                    layers.remove(layers.len()-1);
+                                    layers.remove(layers.len()-1);
+                                }
+                                _ => {
+                                    layers.remove(layers.len()-1);
+                                }
                             }
                         }
                         if indentation.len() >= 2 {
@@ -315,43 +383,63 @@ fn parse(s: String) -> Result<JSON, String> {
                         }
                     }
                     else if c.is_whitespace() {
-                        parser = Parser::valueEnd
+                        parser = Parser::ValueEnd
                     }
                     else {
-                        return Err(format!("unexpected token {} {}", c, i))
+                        return Err(format!("unexpected token {} {} | expected }} or ] or \",\" or Number", c, i))
                     }
                 }
             },
-            Parser::keyword => {
+            Parser::Keyword => {
                 if c.is_alphabetic() {
-                    buffer.write_char(c);
+                    buffer.write_char(c).unwrap();
                 }
                 else {
+                    match &mut js {
+                        Some(v) => {
+                            v.insert(&layers.clone(), JSON::Value(buffer.clone()))
+                        }
+                        None => {
+                            js = Some(JSON::Value(buffer.clone()))
+                        }
+                    }
+
+                    match layers.last().unwrap() {
+                        Layer::Key(_) => {
+                            layers.remove(layers.len()-1);
+                        }
+                        _ => {}
+                    }
+
                     print!("{indentation}");
-                    println!("{:?}: {}", layers.last().unwrap(), buffer);
-                    layers.remove(layers.len()-1);
+                    println!("{:?}: {}", layers.last().unwrap_or(&Layer::Key("root".to_string())), buffer);
+                    // layers.remove(layers.len()-1);
                     buffer.clear();
 
-                    parser = Parser::valueEnd;
+                    parser = Parser::ValueEnd;
                     if c == ',' {
-                        parser = match layers.last().unwrap() {
-                            Layer::Object(_) => {
-                                Parser::keyopen
+                        let len = layers.len()-1;
+                        parser = match layers.get_mut(len).unwrap() {
+                            Layer::Object => {
+                                Parser::Keyopen
                             }
-                            Layer::Array(_) => {
-                                Parser::valuetype
+                            Layer::Array(v) => {
+                                *v += 1;
+                                Parser::Valuetype
                             },
                             _ => panic!()
                         }
                     }
                     else if c == '}' {
-                        match layers[layers.len()-2] {
-                            Layer::Key(_) => {
-                                layers.remove(layers.len()-1);
-                                layers.remove(layers.len()-1);
-                            }
-                            _ => {
-                                layers.remove(layers.len()-1);
+                        if layers.len() > 2 {
+                            match layers[layers.len()-2] {
+                                Layer::Key(_) => {
+                                    layers.remove(layers.len()-1);
+                                    layers.remove(layers.len()-1);
+                                }
+                                _ => {
+                                    layers.remove(layers.len()-1);
+                                }
                             }
                         }
                         if indentation.len() >= 2 {
@@ -359,13 +447,15 @@ fn parse(s: String) -> Result<JSON, String> {
                         }
                     }
                     else if c == ']' {
-                        match layers[layers.len()-2] {
-                            Layer::Key(_) => {
-                                layers.remove(layers.len()-1);
-                                layers.remove(layers.len()-1);
-                            }
-                            _ => {
-                                layers.remove(layers.len()-1);
+                        if layers.len() > 2 {
+                            match layers[layers.len()-2] {
+                                Layer::Key(_) => {
+                                    layers.remove(layers.len()-1);
+                                    layers.remove(layers.len()-1);
+                                }
+                                _ => {
+                                    layers.remove(layers.len()-1);
+                                }
                             }
                         }
                         if indentation.len() >= 2 {
@@ -373,15 +463,16 @@ fn parse(s: String) -> Result<JSON, String> {
                         }
                     }
                     else if c.is_whitespace() {
-                        parser = Parser::valueEnd
+                        parser = Parser::ValueEnd
                     }
                     else {
-                        return Err(format!("unexpected token {} {}", c, i))
+                        return Err(format!("unexpected token {} {} | expected }} or ] or \",\" or chars", c, i))
                     }
                 }
             }
-            _ => { return Err("sus".to_string()) }
+            // _ => { return Err("sus".to_string()) }
         }
+        // println!("last: {:?}", layers);
     }
-    Ok(JSON::Null)
+    Ok(js.unwrap())
 }
